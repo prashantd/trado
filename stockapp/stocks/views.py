@@ -129,6 +129,53 @@ def get_stock_chart(request, symbol):
         # Get 1 month of daily data for candlestick chart
         data = ticker.history(period="1mo", interval="1d")
         
+        # Calculate EMA 20
+        def calculate_ema(prices, period=20):
+            if len(prices) < period:
+                return None
+            ema = []
+            multiplier = 2 / (period + 1)
+            
+            # First EMA value is SMA
+            sma = sum(prices[:period]) / period
+            ema.append(sma)
+            
+            # Calculate subsequent EMA values
+            for price in prices[period:]:
+                ema_value = (price * multiplier) + (ema[-1] * (1 - multiplier))
+                ema.append(ema_value)
+            
+            # Pad with None for the first (period-1) values
+            return [None] * (period - 1) + ema
+        
+        close_prices = data['Close'].tolist()
+        ema_20 = calculate_ema(close_prices, 20)
+        
+        # Calculate pivot levels based on the most recent complete trading day
+        if len(data) >= 2:
+            # Use the second-to-last day for pivot calculation (previous complete day)
+            prev_day = data.iloc[-2]
+            high = prev_day['High']
+            low = prev_day['Low']
+            close = prev_day['Close']
+            
+            # Calculate pivot levels
+            pp = (high + low + close) / 3
+            r1 = (2 * pp) - low
+            r2 = pp + (high - low)
+            s1 = (2 * pp) - high
+            s2 = pp - (high - low)
+            
+            pivot_levels = {
+                'pp': round(pp, 2),
+                'r1': round(r1, 2),
+                'r2': round(r2, 2),
+                's1': round(s1, 2),
+                's2': round(s2, 2)
+            }
+        else:
+            pivot_levels = None
+        
         # Convert to format expected by frontend (Plotly candlestick)
         chart_data = {
             'x': data.index.strftime('%Y-%m-%d').tolist(),
@@ -136,6 +183,8 @@ def get_stock_chart(request, symbol):
             'high': data['High'].tolist(),
             'low': data['Low'].tolist(),
             'close': data['Close'].tolist(),
+            'ema_20': ema_20,
+            'pivot_levels': pivot_levels
         }
         
         return JsonResponse(chart_data)

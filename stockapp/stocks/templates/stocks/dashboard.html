@@ -125,6 +125,24 @@
                         decreasing: {line: {color: 'red'}}
                     };
 
+                    const traces = [trace];
+
+                    // Add EMA 20 line if available
+                    if (data.ema_20 && data.ema_20.some(val => val !== null)) {
+                        const emaTrace = {
+                            x: data.x,
+                            y: data.ema_20,
+                            type: 'scatter',
+                            mode: 'lines',
+                            name: 'EMA 20',
+                            line: {
+                                color: 'orange',
+                                width: 2
+                            }
+                        };
+                        traces.push(emaTrace);
+                    }
+
                     const layout = {
                         title: `${symbol} - 1 Month Daily Chart`,
                         xaxis: {
@@ -143,7 +161,57 @@
                         }
                     };
 
-                    Plotly.newPlot('stockChart', [trace], layout);
+                    // Add pivot level lines if available
+                    if (data.pivot_levels) {
+                        const shapes = [];
+                        const annotations = [];
+                        
+                        // Define pivot levels with colors and labels
+                        const levels = [
+                            { value: data.pivot_levels.pp, label: 'PP', color: 'blue', dash: 'solid' },
+                            { value: data.pivot_levels.r1, label: 'R1', color: 'red', dash: 'dash' },
+                            { value: data.pivot_levels.r2, label: 'R2', color: 'red', dash: 'dot' },
+                            { value: data.pivot_levels.s1, label: 'S1', color: 'green', dash: 'dash' },
+                            { value: data.pivot_levels.s2, label: 'S2', color: 'green', dash: 'dot' }
+                        ];
+                        
+                        levels.forEach(level => {
+                            // Add horizontal line
+                            shapes.push({
+                                type: 'line',
+                                x0: data.x[0],
+                                x1: data.x[data.x.length - 1],
+                                y0: level.value,
+                                y1: level.value,
+                                line: {
+                                    color: level.color,
+                                    width: 1,
+                                    dash: level.dash
+                                }
+                            });
+                            
+                            // Add label annotation at the end of the line
+                            annotations.push({
+                                x: data.x[data.x.length - 1],
+                                y: level.value,
+                                xref: 'x',
+                                yref: 'y',
+                                text: `${level.label}: ${level.value}`,
+                                showarrow: false,
+                                xanchor: 'left',
+                                yanchor: 'middle',
+                                font: {
+                                    size: 10,
+                                    color: level.color
+                                }
+                            });
+                        });
+                        
+                        layout.shapes = shapes;
+                        layout.annotations = annotations;
+                    }
+
+                    Plotly.newPlot('stockChart', traces, layout);
                 })
                 .catch(error => {
                     console.error('Error:', error);
