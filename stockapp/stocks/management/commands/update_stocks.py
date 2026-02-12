@@ -5,7 +5,7 @@ from datetime import datetime
 # Add the trader directory to the path
 sys.path.append('/Users/pdeshkar/git/trader')
 from nifty100_retest import find_retests, check_bullish_stocks_daily, check_bearish_stocks_daily, nifty100_symbols
-from stocks.models import RetestStock, BullishStock, BearishStock
+from stocks.models import RetestStock, BullishStock, BearishStock, StockUpdateLog
 
 class Command(BaseCommand):
     help = 'Update stock data from nifty100_retest.py'
@@ -53,5 +53,9 @@ class Command(BaseCommand):
                 ema20=row['EMA20'],
                 ema50=row['EMA50']
             )
+
+        # Record the update time
+        StockUpdateLog.objects.all().delete()  # Keep only one record
+        StockUpdateLog.objects.create()
 
         self.stdout.write(self.style.SUCCESS('Successfully updated stock data'))

@@ -12,6 +12,11 @@
         <div class="container">
             <a class="navbar-brand" href="#">Stock Trader</a>
             <div class="navbar-nav ms-auto">
+                {% if last_update %}
+                    <span class="navbar-text me-3 text-light">
+                        Last updated: {{ last_update|date:"M d, Y H:i" }}
+                    </span>
+                {% endif %}
                 <a class="nav-link" href="{% url 'logout' %}">Logout</a>
             </div>
         </div>
@@ -27,10 +32,22 @@
                     <div class="card-body" style="max-height: 600px; overflow-y: auto;">
                         <div class="list-group">
                             {% for stock in stocks %}
-                                <a href="#" class="list-group-item list-group-item-action stock-item" data-symbol="{{ stock.symbol }}">
-                                    <strong>{{ stock.symbol }}</strong>
-                                    <br>
-                                    <small class="text-muted">{{ stock.categories|join:", " }}</small>
+                                <a href="#" class="list-group-item list-group-item-action stock-item {% if 'Bullish' in stock.categories %}list-group-item-success{% elif 'Bearish' in stock.categories %}list-group-item-danger{% endif %}" data-symbol="{{ stock.symbol }}">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <strong>{{ stock.symbol }}</strong>
+                                            <br>
+                                            <small class="text-muted">{{ stock.categories|join:", " }}</small>
+                                        </div>
+                                        {% if stock.current_price %}
+                                            <div class="text-end">
+                                                <div class="fw-bold">₹{{ stock.current_price|floatformat:2 }}</div>
+                                                <small class="{% if stock.percent_change >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                                    {% if stock.percent_change >= 0 %}+{% endif %}{{ stock.percent_change|floatformat:2 }}%
+                                                </small>
+                                            </div>
+                                        {% endif %}
+                                    </div>
                                 </a>
                             {% endfor %}
                         </div>
@@ -39,11 +56,33 @@
             </div>
             <div class="col-md-8">
                 <div class="card">
-                    <div class="card-header">
+                    <div class="card-header d-flex justify-content-between align-items-center">
                         <h5 id="chart-title">Select a stock to view chart</h5>
+                        <button id="newsBtn" class="btn btn-sm btn-outline-primary" style="display: none;">News</button>
                     </div>
                     <div class="card-body">
                         <div id="stockChart" style="width: 100%; height: 500px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- News Modal -->
+    <div class="modal fade" id="newsModal" tabindex="-1" aria-labelledby="newsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="newsModalLabel">Latest News</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="newsContent">
+                        <div class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -63,6 +102,8 @@
 
         function loadStockChart(symbol) {
             document.getElementById('chart-title').textContent = `${symbol} - 1 Month Daily Candlestick Chart`;
+            document.getElementById('newsBtn').style.display = 'block';
+            document.getElementById('newsBtn').setAttribute('data-symbol', symbol);
 
             fetch(`/api/stock-chart/${symbol}/`)
                 .then(response => response.json())
@@ -73,11 +114,11 @@
                     }
 
                     const trace = {
-                        x: data.data.map(d => d.x),
-                        open: data.data.map(d => d.open),
-                        high: data.data.map(d => d.high),
-                        low: data.data.map(d => d.low),
-                        close: data.data.map(d => d.close),
+                        x: data.x,
+                        open: data.open,
+                        high: data.high,
+                        low: data.low,
+                        close: data.close,
                         type: 'candlestick',
                         name: symbol,
                         increasing: {line: {color: 'green'}},
@@ -109,6 +150,67 @@
                     alert('Error loading chart data');
                 });
         }
+
+        // News button handler
+        document.getElementById('newsBtn').addEventListener('click', function() {
+            const symbol = this.getAttribute('data-symbol');
+            loadStockNews(symbol);
+        });
+
+        function loadStockNews(symbol) {
+            const newsContent = document.getElementById('newsContent');
+            newsContent.innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            `;
+
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('newsModal'));
+            modal.show();
+
+            fetch(`/api/stock-news/${symbol}/`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        newsContent.innerHTML = `<div class="alert alert-danger">Error loading news: ${data.error}</div>`;
+                        return;
+                    }
+
+                    if (data.news.length === 0) {
+                        newsContent.innerHTML = '<div class="alert alert-info">No news available for this stock.</div>';
+                        return;
+                    }
+
+                    let newsHtml = '<div class="list-group">';
+                    data.news.forEach(item => {
+                        const publishedDate = new Date(item.published_at).toLocaleDateString();
+                        newsHtml += `
+                            <div class="list-group-item">
+                                <h6 class="mb-1">
+                                    <a href="${item.url}" target="_blank" class="text-decoration-none">
+                                        ${item.title}
+                                    </a>
+                                </h6>
+                                <p class="mb-1 text-muted small">${item.summary}</p>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <small class="text-muted">${item.publisher}</small>
+                                    <small class="text-muted">${publishedDate}</small>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    newsHtml += '</div>';
+                    newsContent.innerHTML = newsHtml;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    newsContent.innerHTML = '<div class="alert alert-danger">Error loading news data.</div>';
+                });
+        }
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

@@ -6,7 +6,7 @@ from django.contrib import messages
 import yfinance as yf
 import pandas as pd
 import json
-from .models import RetestStock, BullishStock, BearishStock
+from .models import RetestStock, BullishStock, BearishStock, StockUpdateLog
 
 def login_view(request):
     if request.method == 'POST':
@@ -52,32 +52,92 @@ def dashboard(request):
             stock_info['categories'].append("Bearish")
         stocks_data.append(stock_info)
 
-    return render(request, 'stocks/dashboard.html', {'stocks': stocks_data})
+    # Get current prices and percentage changes
+    stock_prices = {}
+    if all_stocks:
+        try:
+            # Fetch current data for all stocks at once
+            tickers = yf.Tickers(' '.join(all_stocks))
+            for symbol in all_stocks:
+                try:
+                    ticker = tickers.tickers[symbol]
+                    info = ticker.info
+                    current_price = info.get('currentPrice') or info.get('regularMarketPrice')
+                    previous_close = info.get('previousClose')
+
+                    if current_price and previous_close:
+                        percent_change = ((current_price - previous_close) / previous_close) * 100
+                        stock_prices[symbol] = {
+                            'price': current_price,
+                            'change': percent_change
+                        }
+                except Exception as e:
+                    print(f"Error fetching data for {symbol}: {e}")
+                    continue
+        except Exception as e:
+            print(f"Error fetching stock prices: {e}")
+
+    # Add price data to stocks_data
+    for stock in stocks_data:
+        symbol = stock['symbol']
+        if symbol in stock_prices:
+            stock['current_price'] = stock_prices[symbol]['price']
+            stock['percent_change'] = stock_prices[symbol]['change']
+
+        # Add flag for Indian stocks
+        stock['is_indian_stock'] = symbol.endswith('.NS')
+
+    # Get last update time
+    last_update = None
+    if StockUpdateLog.objects.exists():
+        last_update = StockUpdateLog.objects.first().last_updated
+
+    return render(request, 'stocks/dashboard.html', {
+        'stocks': stocks_data,
+        'last_update': last_update
+    })
+
+@login_required
+def get_stock_news(request, symbol):
+    # Get latest news for the stock
+    try:
+        ticker = yf.Ticker(symbol)
+        news = ticker.news
+
+        # Process news items
+        news_items = []
+        for item in news[:10]:  # Limit to 10 news items
+            content = item.get('content', {})
+            news_item = {
+                'title': content.get('title', 'No title'),
+                'summary': content.get('summary', ''),
+                'publisher': content.get('provider', {}).get('displayName', 'Unknown'),
+                'url': content.get('clickThroughUrl', {}).get('url', ''),
+                'published_at': content.get('pubDate', ''),
+            }
+            news_items.append(news_item)
+
+        return JsonResponse({'news': news_items})
+    except Exception as e:
+        return JsonResponse({'error': str(e)})
 
 @login_required
 def get_stock_chart(request, symbol):
-    # Get 1 month daily chart data
+    # Get chart data for the stock
     try:
-        data = yf.download(symbol, period='1mo', interval='1d')
-        if data.empty:
-            return JsonResponse({'error': 'No data available'})
-
-        # Handle MultiIndex columns from yfinance
-        if isinstance(data.columns, pd.MultiIndex):
-            # Flatten columns and select only this symbol
-            data.columns = [col[0] for col in data.columns]
-
-        # Convert to format suitable for candlestick chart
-        chart_data = []
-        for idx, row in data.iterrows():
-            chart_data.append({
-                'x': str(idx.date()),  # Use date only for cleaner labels
-                'open': float(row['Open']),
-                'high': float(row['High']),
-                'low': float(row['Low']),
-                'close': float(row['Close'])
-            })
-
-        return JsonResponse({'data': chart_data})
+        ticker = yf.Ticker(symbol)
+        # Get 1 month of daily data for candlestick chart
+        data = ticker.history(period="1mo", interval="1d")
+        
+        # Convert to format expected by frontend (Plotly candlestick)
+        chart_data = {
+            'x': data.index.strftime('%Y-%m-%d').tolist(),
+            'open': data['Open'].tolist(),
+            'high': data['High'].tolist(),
+            'low': data['Low'].tolist(),
+            'close': data['Close'].tolist(),
+        }
+        
+        return JsonResponse(chart_data)
     except Exception as e:
         return JsonResponse({'error': str(e)})

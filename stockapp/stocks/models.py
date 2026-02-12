@@ -35,3 +35,13 @@ class BearishStock(models.Model):
 
     def __str__(self):
         return f"{self.symbol} - Bearish"
+
+class StockUpdateLog(models.Model):
+    last_updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Stock Update Log"
+        verbose_name_plural = "Stock Update Logs"
+
+    def __str__(self):
+        return f"Last updated: {self.last_updated}"
