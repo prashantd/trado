@@ -117,7 +117,13 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# Kite Connect API Configuration
+KITE_API_KEY = '98k3nflwuz6jqvh3'
+KITE_API_SECRET = 'siwtxrk1f3fj27e0x7c8ggm3u42z2w6m'
+KITE_REDIRECT_URL = 'https://trado.servicenet.in/kite/callback/'
+
 # Authentication settings
+AUTH_USER_MODEL = 'stocks.User'
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/login/'

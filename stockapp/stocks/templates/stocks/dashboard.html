@@ -11,12 +11,16 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
             <a class="navbar-brand" href="#">Stock Trader</a>
+            <span class="navbar-text me-3 text-light">
+                Welcome, {{ request.session.kite_user_name|default:user.get_full_name|default:user.username }}
+            </span>
             <div class="navbar-nav ms-auto">
                 {% if last_update %}
                     <span class="navbar-text me-3 text-light">
                         Last updated: {{ last_update|date:"M d, Y H:i" }}
                     </span>
                 {% endif %}
+                <a class="nav-link" href="{% url 'positions' %}">Positions</a>
                 <a class="nav-link" href="{% url 'logout' %}">Logout</a>
             </div>
         </div>
@@ -32,16 +36,20 @@
                     <div class="card-body" style="max-height: 600px; overflow-y: auto;">
                         <div class="list-group">
                             {% for stock in stocks %}
-                                <a href="#" class="list-group-item list-group-item-action stock-item {% if 'Bullish' in stock.categories %}list-group-item-success{% elif 'Bearish' in stock.categories %}list-group-item-danger{% endif %}" data-symbol="{{ stock.symbol }}">
+                                <a href="#" class="list-group-item list-group-item-action stock-item" data-symbol="{{ stock.symbol }}">
                                     <div class="d-flex justify-content-between align-items-start">
                                         <div>
-                                            <strong>{{ stock.symbol }}</strong>
+                                            <strong class="{% if 'Bullish' in stock.categories %}text-success{% elif 'Bearish' in stock.categories %}text-danger{% endif %}">{{ stock.symbol }}</strong>
                                             <br>
                                             <small class="text-muted">{{ stock.categories|join:", " }}</small>
+                                            {% if stock.atm_option %}
+                                                <br>
+                                                <small class="text-info">{{ stock.atm_option }}</small>
+                                            {% endif %}
                                         </div>
                                         {% if stock.current_price %}
                                             <div class="text-end">
-                                                <div class="fw-bold">₹{{ stock.current_price|floatformat:2 }}</div>
+                                                <div class="fw-bold {% if 'Bullish' in stock.categories %}text-success{% elif 'Bearish' in stock.categories %}text-danger{% endif %}">₹{{ stock.current_price|floatformat:2 }}</div>
                                                 <small class="{% if stock.percent_change >= 0 %}text-success{% else %}text-danger{% endif %}">
                                                     {% if stock.percent_change >= 0 %}+{% endif %}{{ stock.percent_change|floatformat:2 }}%
                                                 </small>
@@ -278,6 +286,86 @@
                     newsContent.innerHTML = '<div class="alert alert-danger">Error loading news data.</div>';
                 });
         }
+
+        // Auto-refresh stock list
+        let lastUpdateTime = null;
+
+        function checkForUpdates() {
+            fetch('/api/stock-list/')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.last_update && data.last_update !== lastUpdateTime) {
+                        lastUpdateTime = data.last_update;
+                        updateStockList(data.stocks);
+                        updateLastUpdateTime(data.last_update);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking for updates:', error);
+                });
+        }
+
+        function updateStockList(stocks) {
+            const stockListContainer = document.querySelector('.list-group');
+            stockListContainer.innerHTML = '';
+
+            stocks.forEach(stock => {
+                const stockItem = document.createElement('a');
+                stockItem.href = '#';
+                stockItem.className = 'list-group-item list-group-item-action stock-item';
+                stockItem.setAttribute('data-symbol', stock.symbol);
+
+                stockItem.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <strong class="${stock.categories.includes('Bullish') ? 'text-success' : stock.categories.includes('Bearish') ? 'text-danger' : ''}">${stock.symbol}</strong>
+                            <br>
+                            <small class="text-muted">${stock.categories.join(", ")}</small>
+                            ${stock.atm_option ? `<br><small class="text-info">${stock.atm_option}</small>` : ''}
+                        </div>
+                        ${stock.current_price ? `
+                            <div class="text-end">
+                                <div class="fw-bold ${stock.categories.includes('Bullish') ? 'text-success' : stock.categories.includes('Bearish') ? 'text-danger' : ''}">₹${parseFloat(stock.current_price).toFixed(2)}</div>
+                                <small class="${stock.percent_change >= 0 ? 'text-success' : 'text-danger'}">
+                                    ${stock.percent_change >= 0 ? '+' : ''}${parseFloat(stock.percent_change).toFixed(2)}%
+                                </small>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+
+                stockItem.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const symbol = this.getAttribute('data-symbol');
+                    loadStockChart(symbol);
+                });
+
+                stockListContainer.appendChild(stockItem);
+            });
+        }
+
+        function updateLastUpdateTime(lastUpdate) {
+            const lastUpdateElement = document.querySelector('.navbar-text');
+            if (lastUpdateElement && lastUpdate) {
+                const date = new Date(lastUpdate);
+                lastUpdateElement.textContent = `Last updated: ${date.toLocaleString()}`;
+            }
+        }
+
+        // Check for updates every 30 seconds
+        setInterval(checkForUpdates, 30000);
+
+        // Initial setup
+        fetch('/api/stock-list/')
+            .then(response => response.json())
+            .then(data => {
+                if (data.last_update) {
+                    lastUpdateTime = data.last_update;
+                }
+            })
+            .catch(error => {
+                console.error('Error initializing:', error);
+            });
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>

@@ -30,10 +30,16 @@
                                 <label for="password" class="form-label">Password</label>
                                 <input type="password" class="form-control" id="password" name="password" required>
                             </div>
-                            <div class="d-grid">
+                            <div class="d-grid mb-3">
                                 <button type="submit" class="btn btn-primary">Login</button>
                             </div>
                         </form>
+                        <hr>
+                        <div class="d-grid">
+                            <a href="{% url 'kite_login' %}" class="btn btn-success">
+                                <i class="fas fa-external-link-alt me-2"></i>Login with Kite
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
